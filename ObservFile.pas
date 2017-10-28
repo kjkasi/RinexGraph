@@ -5,21 +5,31 @@ interface
 uses RinexFile, Classes;
 
 type
+  PMath = procedure(Sender: TObject; sMath: String) of Object;
+
+type
   TObservFile = Class(TRinexFile)
   private
-    function GetFormatVersion: Double;
-    procedure SetFormatVersion(const Value: Double);
-    function Parse(sRegex: String): String;
     { Private declarations }
+    FFileName: String;
+    FMath: PMath;
+    function Parse(sRegex: String): String; overload;
+    function Parse(sRegex, Text: String): String; overload;
+    function GetFileName: String;
+    procedure SetFileName(const Value: String);
+    function GetOnMath: PMath;
+    procedure SetOnMath(const Value: PMath);
+    function GetVersionType (): String;
   public
     { Public declarations }
-    sFilePath: String;
-    property FormatVersion: Double read GetFormatVersion write SetFormatVersion;
     constructor Create(sFilePath: String); overload;
     destructor Destroy; override;
-    function GetFormat(): String;
-    function GetType(): String;
-    function GetRinexVersionType(sRegex: String): String;
+    procedure ParseRegex(sRegex: String);
+    function GetType (): String;
+    function GetVer (): String;
+    function GetSystem (): String;
+    property FileName: String read GetFileName write SetFileName;
+    property OnMath: PMath read GetOnMath write SetOnMath;
   end;
 
 var
@@ -36,7 +46,7 @@ begin
   inherited;
   Self.sFilePath := sFilePath;
   StringList := TStringList.Create;
-  StringList.LoadFromFile(sFilePath);
+  StringList.LoadFromFile (sFilePath);
 end;
 
 destructor TObservFile.Destroy;
@@ -45,30 +55,38 @@ begin
   inherited;
 end;
 
-function TObservFile.GetFormat: String;
-const
-  VersionRE = '.*\d*\.\d{2}\s{11}';
+function TObservFile.GetFileName: String;
 begin
-  Result := '';
-  Result := Parse (VersionRE);
+  Result := FFileName;
 end;
 
-function TObservFile.GetFormatVersion: Double;
+function TObservFile.GetOnMath: PMath;
 begin
-  //
+  Result := FMath;
 end;
 
-function TObservFile.GetRinexVersionType(sRegex: String): String;
+function TObservFile.GetSystem: String;
+const SystemRE = '.{2}\(MIXED\).{11}';
 begin
-
+  Result := Parse(SystemRE, GetVersionType ());
 end;
 
 function TObservFile.GetType: String;
-const
-  TypeRE = ' {11}(O[A-Z]*|N:|G:).*';
+const TypeRE = '\s{11}(O|G:|N).{19}';
 begin
-  Result := '';
-  Result := Parse (TypeRE);
+  Result := Parse (TypeRE, GetVersionType ());
+end;
+
+function TObservFile.GetVer: String;
+const VerRE = '.*\d*\.\d{2}\s{11}';
+begin
+  Result := Parse (VerRE, GetVersionType ());
+end;
+
+function TObservFile.GetVersionType: String;
+const VersionTypeRE = '.*\d*\.\d{2}\s{11}.*RINEX VERSION / TYPE';
+begin
+  Result := Parse (VersionTypeRE, StringList.Text);
 end;
 
 function TObservFile.Parse(sRegex: String): String;
@@ -77,20 +95,63 @@ var
 begin
   Result := '';
   r := TRegExpr.Create;
-  r.ModifierG := False;
+  //r.ModifierG := False;
   try
      r.Expression := sRegex;
      if r.Exec (StringList.Text) then
       REPEAT
-       Result := Result + r.Match [0] + ',';
+       Result := Result + r.Match [0];// + ',';
       UNTIL not r.ExecNext;
     finally r.Free;
    end;
 end;
 
-procedure TObservFile.SetFormatVersion(const Value: Double);
+function TObservFile.Parse(sRegex, Text: String): String;
+var
+  r: TRegExpr;
 begin
-  //
+  Result := '';
+  r := TRegExpr.Create;
+  //r.ModifierG := False;
+  try
+    r.Expression := sRegex;
+    if r.Exec (Text) then
+      REPEAT
+        Result := Result + r.Match [0];// + ',';
+      UNTIL not r.ExecNext;
+  finally
+    r.Free;
+  end;
+end;
+
+procedure TObservFile.ParseRegex(sRegex: String);
+var
+  r: TRegExpr;
+begin
+  //Result := '';
+  r := TRegExpr.Create;
+  //r.ModifierG := False;
+  try
+    r.Expression := sRegex;
+    if r.Exec (StringList.Text) then
+    begin
+      repeat
+        if @OnMath <> nil then FMath (Self, r.Match [0]);
+      until not r.ExecNext;
+    end
+  finally
+    r.Free;
+  end;
+end;
+
+procedure TObservFile.SetFileName(const Value: String);
+begin
+  FFileName := Value;
+end;
+
+procedure TObservFile.SetOnMath(const Value: PMath);
+begin
+  FMath := Value;
 end;
 
 end.
